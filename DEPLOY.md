@@ -111,6 +111,11 @@ TWILIO_FROM_NUMBER=+33xxxxxxx
 CRON_SECRET=générer_un_secret_aléatoire_fort
 ```
 
+**Base URL (Production)**
+```
+NEXT_PUBLIC_BASE_URL=https://www.beefood.fr
+```
+
 **Dev**
 ```
 DEV_TENANT_SLUG=tacobee
@@ -147,16 +152,53 @@ Vercel déploiera automatiquement.
 
 ## 🔗 Étape 4 : Configuration Webhooks
 
-### 4.1 Webhook Zelty
+### 4.1 Webhook Zelty - Configuration Automatique ✨
 
-1. Dans le dashboard Zelty, aller dans Settings → Webhooks
-2. Créer un nouveau webhook :
-   - **URL** : `https://www.beefood.fr/api/webhooks/zelty`
-   - **Events** : 
-     - `dish.availability_update`
-     - `option_value.availability_update`
-     - `order.status.update`
-   - **Secret** : Générer et noter dans `ZELTY_WEBHOOK_SECRET`
+**Nouveau !** Vous pouvez maintenant configurer les webhooks Zelty automatiquement via l'API.
+
+1. Une fois votre application déployée sur Vercel, appelez l'endpoint de setup :
+
+```bash
+curl -X POST https://www.beefood.fr/api/admin/setup-webhooks \
+  -H "Authorization: Bearer VOTRE_CRON_SECRET" \
+  -H "Content-Type: application/json"
+```
+
+Cela va automatiquement :
+- Configurer les 3 webhooks nécessaires (`dish.availability_update`, `option_value.availability_update`, `order.status.update`)
+- Utiliser votre `ZELTY_WEBHOOK_SECRET` pour la sécurité
+- Pointer vers `https://www.beefood.fr/api/webhooks/zelty`
+
+2. Vérifier la configuration :
+
+```bash
+curl -X GET https://www.beefood.fr/api/admin/setup-webhooks \
+  -H "Authorization: Bearer VOTRE_CRON_SECRET"
+```
+
+**Ou manuellement (si préféré)** :
+
+Dans le dashboard Zelty, vous pouvez aussi faire un POST /webhooks avec ce body :
+
+```json
+{
+  "webhooks": {
+    "dish.availability_update": {
+      "target": "https://www.beefood.fr/api/webhooks/zelty",
+      "version": "v2"
+    },
+    "option_value.availability_update": {
+      "target": "https://www.beefood.fr/api/webhooks/zelty",
+      "version": "v2"
+    },
+    "order.status.update": {
+      "target": "https://www.beefood.fr/api/webhooks/zelty",
+      "version": "v2"
+    }
+  },
+  "secret_key": "VOTRE_ZELTY_WEBHOOK_SECRET"
+}
+```
 
 ### 4.2 Webhook Stripe
 

@@ -83,6 +83,7 @@ export default async function AdminDashboard() {
 
           <a
             href="/api/cron/sync-catalog"
+            target="_blank"
             className="block p-4 border-2 border-gray-200 rounded-lg hover:border-orange-500 transition-colors"
           >
             <div className="text-2xl mb-2">🔄</div>
