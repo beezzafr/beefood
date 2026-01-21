@@ -58,7 +58,7 @@ export async function POST(request: Request) {
 
     // Appeler l'API Zelty pour configurer les webhooks
     const response = await fetch(
-      `${process.env.ZELTY_API_BASE_URL || 'https://api.zelty.fr/2.7'}/webhooks`,
+      `${process.env.ZELTY_API_BASE_URL || 'https://api.zelty.fr/2.10'}/webhooks`,
       {
         method: 'POST',
         headers: {
@@ -118,7 +118,7 @@ export async function GET(request: Request) {
 
     // Récupérer la configuration actuelle depuis Zelty
     const response = await fetch(
-      `${process.env.ZELTY_API_BASE_URL || 'https://api.zelty.fr/2.7'}/webhooks`,
+      `${process.env.ZELTY_API_BASE_URL || 'https://api.zelty.fr/2.10'}/webhooks`,
       {
         method: 'GET',
         headers: {

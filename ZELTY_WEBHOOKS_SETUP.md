@@ -62,7 +62,7 @@ curl -X GET https://www.beefood.fr/api/admin/setup-webhooks \
 Si vous préférez configurer manuellement, voici le body exact à envoyer via Postman ou curl :
 
 ```bash
-curl -X POST https://api.zelty.fr/2.7/webhooks \
+curl -X POST https://api.zelty.fr/2.10/webhooks \
   -H "Authorization: Bearer VOTRE_ZELTY_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -165,7 +165,7 @@ Selon le support Zelty :
 
 > "Nos webhooks sont bien disponibles pour l'ensemble de nos restaurants et clés API ; aucune autorisation particulière n'est nécessaire pour les utiliser. Concrètement, il suffit d'effectuer un POST /webhooks avec le bon body afin d'activer les webhooks sur l'URL de votre choix."
 
-**API Endpoint** : `POST https://api.zelty.fr/2.7/webhooks`
+**API Endpoint** : `POST https://api.zelty.fr/2.10/webhooks`
 
 **Authentification** : Bearer token (votre ZELTY_API_KEY)
 

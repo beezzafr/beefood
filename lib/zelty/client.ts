@@ -4,7 +4,7 @@ import {
   ZeltyOrderResponse,
 } from '@/types/zelty';
 
-const ZELTY_API_BASE = process.env.ZELTY_API_BASE_URL || 'https://api.zelty.fr/2.7';
+const ZELTY_API_BASE = process.env.ZELTY_API_BASE_URL || 'https://api.zelty.fr/2.10';
 const ZELTY_API_KEY = process.env.ZELTY_API_KEY || '';
 
 export class ZeltyClient {
