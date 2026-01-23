@@ -80,6 +80,8 @@ export async function syncTenantCatalog(
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         console.error(`[Sync] ❌ Failed for ${tenant.slug}:`, errorMessage);
+        console.error(`[Sync] Full error details:`, error);
+        console.error(`[Sync] Tenant catalog_id:`, tenant.zelty_catalog_id);
 
         return {
             success: false,
