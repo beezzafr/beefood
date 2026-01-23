@@ -4,7 +4,12 @@ import {
   updateProductAvailability,
   updateOptionAvailability,
 } from '@/lib/zelty/sync';
-import { ZeltyWebhookPayload } from '@/types/zelty';
+import {
+  ZeltyWebhookEnvelope,
+  DishAvailabilityData,
+  OptionAvailabilityData,
+  OrderStatusData,
+} from '@/types/zelty';
 import crypto from 'crypto';
 
 /**
@@ -57,23 +62,23 @@ export async function POST(request: Request) {
       );
     }
 
-    // 3. Parser le payload
-    const payload: ZeltyWebhookPayload = JSON.parse(body);
-    console.log('[Webhook Zelty] Received event:', payload.event);
+    // 3. Parser le payload (format officiel Zelty avec enveloppe)
+    const payload: ZeltyWebhookEnvelope = JSON.parse(body);
+    console.log('[Webhook Zelty] Received event:', payload.event_name);
 
     // 4. Traiter l'événement selon son type
-    switch (payload.event) {
+    switch (payload.event_name) {
       case 'dish.availability_update':
-        return await handleDishAvailabilityUpdate(payload);
+        return await handleDishAvailabilityUpdate(payload as ZeltyWebhookEnvelope<DishAvailabilityData>);
 
       case 'option_value.availability_update':
-        return await handleOptionAvailabilityUpdate(payload);
+        return await handleOptionAvailabilityUpdate(payload as ZeltyWebhookEnvelope<OptionAvailabilityData>);
 
       case 'order.status.update':
-        return await handleOrderStatusUpdate(payload);
+        return await handleOrderStatusUpdate(payload as ZeltyWebhookEnvelope<OrderStatusData>);
 
       default:
-        console.warn(`[Webhook Zelty] Unknown event type: ${payload.event}`);
+        console.warn(`[Webhook Zelty] Unknown event type: ${payload.event_name}`);
         return NextResponse.json({
           message: 'Event type not supported',
         });
@@ -94,36 +99,31 @@ export async function POST(request: Request) {
  * Gère la mise à jour de disponibilité d'un produit
  */
 async function handleDishAvailabilityUpdate(
-  payload: ZeltyWebhookPayload
+  payload: ZeltyWebhookEnvelope<DishAvailabilityData>
 ): Promise<NextResponse> {
-  if (!payload.id_catalog || !payload.id_dish) {
-    return NextResponse.json(
-      { error: 'Missing id_catalog or id_dish' },
-      { status: 400 }
-    );
-  }
+  const dishData = payload.data;
 
-  // Trouver le tenant correspondant au catalog_id
+  // Trouver le tenant via restaurant_id (PAS catalog_id qui n'existe pas dans le webhook)
   const supabase = await createClient();
   const { data: tenant, error } = await supabase
     .from('tenants')
     .select('id, slug')
-    .eq('zelty_catalog_id', payload.id_catalog)
+    .eq('zelty_restaurant_id', payload.restaurant_id)  // Utiliser restaurant_id de l'enveloppe
     .single();
 
   if (error || !tenant) {
-    console.error('[Webhook Zelty] Tenant not found for catalog:', payload.id_catalog);
+    console.error('[Webhook Zelty] Tenant not found for restaurant:', payload.restaurant_id);
     return NextResponse.json(
       { error: 'Tenant not found' },
       { status: 404 }
     );
   }
 
-  // Mettre à jour la disponibilité
-  const isAvailable = !payload.outofstock;
+  // Mettre à jour la disponibilité (convertir number en string pour notre DB)
+  const isAvailable = !dishData.outofstock;
   const success = await updateProductAvailability(
     tenant.id,
-    payload.id_dish,
+    dishData.id_dish.toString(),
     isAvailable
   );
 
@@ -134,63 +134,64 @@ async function handleDishAvailabilityUpdate(
     );
   }
 
+  console.log(`[Webhook Zelty] ✅ Dish ${dishData.id_dish} updated for tenant ${tenant.slug}`);
+
   return NextResponse.json({
     message: 'Product availability updated',
     tenant_slug: tenant.slug,
-    dish_id: payload.id_dish,
+    dish_id: dishData.id_dish,
     is_available: isAvailable,
   });
 }
 
 /**
  * Gère la mise à jour de disponibilité d'une option
+ * Note: Zelty envoie un TABLEAU d'options à mettre à jour
  */
 async function handleOptionAvailabilityUpdate(
-  payload: ZeltyWebhookPayload
+  payload: ZeltyWebhookEnvelope<OptionAvailabilityData>
 ): Promise<NextResponse> {
-  if (!payload.id_catalog || !payload.id_option_value) {
-    return NextResponse.json(
-      { error: 'Missing id_catalog or id_option_value' },
-      { status: 400 }
-    );
-  }
+  const optionData = payload.data;
 
-  // Trouver le tenant
+  // Trouver le tenant via restaurant_id
   const supabase = await createClient();
   const { data: tenant, error } = await supabase
     .from('tenants')
     .select('id, slug')
-    .eq('zelty_catalog_id', payload.id_catalog)
+    .eq('zelty_restaurant_id', payload.restaurant_id)
     .single();
 
   if (error || !tenant) {
-    console.error('[Webhook Zelty] Tenant not found for catalog:', payload.id_catalog);
+    console.error('[Webhook Zelty] Tenant not found for restaurant:', payload.restaurant_id);
     return NextResponse.json(
       { error: 'Tenant not found' },
       { status: 404 }
     );
   }
 
-  // Mettre à jour la disponibilité
-  const isAvailable = !payload.outofstock;
-  const success = await updateOptionAvailability(
-    tenant.id,
-    payload.id_option_value,
-    isAvailable
-  );
-
-  if (!success) {
-    return NextResponse.json(
-      { error: 'Failed to update option availability' },
-      { status: 500 }
+  // Mettre à jour chaque option du tableau
+  const results = [];
+  for (const opt of optionData.options_values_availabilities) {
+    const isAvailable = !opt.outofstock;
+    const success = await updateOptionAvailability(
+      tenant.id,
+      opt.id_dish_option_value.toString(),
+      isAvailable
     );
+
+    results.push({
+      option_id: opt.id_dish_option_value,
+      success,
+      is_available: isAvailable,
+    });
   }
+
+  console.log(`[Webhook Zelty] ✅ Updated ${results.length} options for tenant ${tenant.slug}`);
 
   return NextResponse.json({
     message: 'Option availability updated',
     tenant_slug: tenant.slug,
-    option_id: payload.id_option_value,
-    is_available: isAvailable,
+    updates: results,
   });
 }
 
@@ -198,14 +199,9 @@ async function handleOptionAvailabilityUpdate(
  * Gère la mise à jour du statut d'une commande
  */
 async function handleOrderStatusUpdate(
-  payload: ZeltyWebhookPayload
+  payload: ZeltyWebhookEnvelope<OrderStatusData>
 ): Promise<NextResponse> {
-  if (!payload.id_order || !payload.status) {
-    return NextResponse.json(
-      { error: 'Missing id_order or status' },
-      { status: 400 }
-    );
-  }
+  const orderData = payload.data;
 
   const supabase = await createClient();
 
@@ -213,11 +209,11 @@ async function handleOrderStatusUpdate(
   const { data: order, error } = await supabase
     .from('orders')
     .select('id, order_number')
-    .eq('zelty_order_id', payload.id_order)
+    .eq('zelty_order_id', orderData.id_order.toString())
     .single();
 
   if (error || !order) {
-    console.error('[Webhook Zelty] Order not found:', payload.id_order);
+    console.error('[Webhook Zelty] Order not found:', orderData.id_order);
     return NextResponse.json(
       { error: 'Order not found' },
       { status: 404 }
@@ -235,7 +231,7 @@ async function handleOrderStatusUpdate(
     'cancelled': 'cancelled',
   };
 
-  const mappedStatus = statusMap[payload.status] || payload.status;
+  const mappedStatus = statusMap[orderData.status] || orderData.status;
 
   // Mettre à jour le statut
   const { error: updateError } = await supabase

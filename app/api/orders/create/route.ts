@@ -168,41 +168,56 @@ export async function POST(request: Request) {
     // 7. Envoyer la commande à Zelty
     if (tenant.zelty_virtual_brand_name) {
       try {
-        // Préparer les items pour Zelty (inclure frais de livraison si applicable)
+        // Mapper order_type -> mode Zelty
+        const zeltyMode = body.order_type === 'pickup' ? 'takeaway' : 'delivery';
+
+        // Préparer les items pour Zelty
+        // IMPORTANT: Zelty peut nécessiter de dupliquer les items au lieu d'utiliser quantity
+        // À valider avec vos tests. Pour l'instant, on envoie avec quantity.
         const zeltyItems = body.items.map((item) => ({
-          id_dish: item.zelty_id,
-          quantity: item.quantity,
+          id: parseInt(item.zelty_id),  // INTEGER, pas string
           price: item.price_cents,
-          options: item.options.map((opt) => ({
-            id_option: opt.zelty_id,
+          modifiers: item.options.map((opt) => ({  // "modifiers", pas "options"
+            id_option_value: parseInt(opt.zelty_id),
             price: opt.price_cents,
           })),
+          // Note: quantity pourrait nécessiter duplication selon API
+          // Ex: Array.from({ length: item.quantity }, () => ({ id: ..., modifiers: ... }))
         }));
 
         // Ajouter les frais de livraison comme produit si applicable
         if (deliveryFeeCents > 0 && process.env.ZELTY_DELIVERY_FEE_PRODUCT_ID) {
           zeltyItems.push({
-            id_dish: process.env.ZELTY_DELIVERY_FEE_PRODUCT_ID,
-            quantity: 1,
+            id: parseInt(process.env.ZELTY_DELIVERY_FEE_PRODUCT_ID),
             price: deliveryFeeCents,
-            options: [],
+            modifiers: [],
           });
         }
 
         const zeltyPayload: ZeltyOrderPayload = {
           id_restaurant: tenant.zelty_restaurant_id,
-          virtual_brand_name: tenant.zelty_virtual_brand_name,
           source: 'web',
+          mode: zeltyMode,  // "mode", pas "order_type"
           customer: {
             name: body.customer_name,
             email: body.customer_email,
             phone: body.customer_phone,
           },
-          delivery_address: body.delivery_address,
+          address: body.delivery_address ? {
+            street: body.delivery_address.street,
+            city: body.delivery_address.city,
+            zipcode: body.delivery_address.zipcode,
+            additional_info: body.delivery_address.additional_info,
+          } : null,
           items: zeltyItems,
-          order_type: body.order_type,
-          payment_method: body.payment_method === 'stripe' ? 'online' : 'cash',
-          total_amount: totalCents,
+          total: totalCents,
+          transactions: body.payment_method === 'stripe' ? [{
+            type: 'card',
+            amount: totalCents,
+          }] : undefined,
+          comment: body.customer_notes || null,
+          first_name: body.customer_name,
+          phone: body.customer_phone,
         };
 
         const zeltyOrder = await zeltyClient.createOrder(zeltyPayload);
@@ -210,11 +225,11 @@ export async function POST(request: Request) {
         // Mettre à jour l'ordre avec l'ID Zelty
         await supabase
           .from('orders')
-          .update({ zelty_order_id: zeltyOrder.id })
+          .update({ zelty_order_id: zeltyOrder.order.id.toString() })
           .eq('id', order.id);
 
         console.log(
-          `[Orders] ✅ Order ${order.order_number} sent to Zelty: ${zeltyOrder.id}`
+          `[Orders] ✅ Order ${order.order_number} sent to Zelty: ${zeltyOrder.order.id}`
         );
       } catch (zeltyError) {
         console.error('[Orders] Error sending to Zelty:', zeltyError);
