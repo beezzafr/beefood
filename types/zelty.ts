@@ -5,17 +5,44 @@
 // ============================================
 
 export interface ZeltyCatalogDish {
-  id: string;
+  id: number;              // INTEGER dans l'API Zelty
+  remote_id?: string | null;
+  id_restaurant: number;
+  sku?: string | null;
   name: string;
-  description?: string;
-  price: number;  // En euros
-  image?: string;
-  vat_rate?: number;
-  outofstock: boolean;
-  active: boolean;
-  category_ids?: string[];
-  allergens?: string[];
-  sort_order?: number;
+  description?: string | null;
+  image?: string | null;
+  thumb?: string | null;
+  price: number;           // En centimes
+  price_togo?: number | null;
+  price_delivery?: number | null;
+  happy_price?: number | null;
+  cost_price?: number | null;
+  tva: number;             // TVA (ex: 1000 = 10%)
+  tvat?: number | null;
+  tvad?: number | null;
+  tax: number;
+  tax_takeaway?: number | null;
+  tax_delivery?: number | null;
+  tags?: number[];
+  options?: number[];
+  id_fabrication_place?: number;
+  fab_name?: string | null;
+  color?: string | null;
+  loyalty_points?: number;
+  loyalty_points_discount?: number | null;
+  earn_loyalty?: number;
+  price_to_define?: boolean;
+  weight_for_price?: number | null;
+  disable: boolean;        // true = désactivé (outofstock)
+  disable_takeaway?: boolean;
+  disable_delivery?: boolean;
+  disable_before?: string | null;
+  disable_after?: string | null;
+  o?: number;
+  zc_only?: boolean;
+  meta?: Record<string, any>;
+  zc_name?: string | null;
 }
 
 export interface ZeltyOptionValue {

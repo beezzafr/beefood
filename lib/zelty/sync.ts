@@ -9,18 +9,18 @@ import { ZeltyCatalogDish } from '@/types/zelty';
 function transformZeltyDish(dish: ZeltyCatalogDish, tenantId: string) {
     return {
         tenant_id: tenantId,
-        zelty_id: dish.id.toString(),
+        zelty_id: dish.id.toString(),  // Convertir number en string
         zelty_type: 'dish' as const,
         name: dish.name,
         description: dish.description || null,
         image_url: dish.image || null,
-        price_cents: Math.round(dish.price * 100), // Convertir euros en centimes
-        tax_rate: dish.vat_rate || 10.0,
-        is_available: !dish.outofstock,
-        is_active: dish.active,
-        category_ids: dish.category_ids || [],
-        allergens: dish.allergens || [],
-        sort_order: dish.sort_order || 0,
+        price_cents: dish.price,  // Déjà en centimes dans Zelty
+        tax_rate: dish.tva / 100,  // Convertir 1000 -> 10.0
+        is_available: !dish.disable,  // disable = true → indisponible
+        is_active: !dish.disable,  // Utiliser disable pour l'instant
+        category_ids: dish.tags?.map(t => t.toString()) || [],
+        allergens: [],  // Pas dans l'API, à gérer autrement si nécessaire
+        sort_order: dish.o || 0,
         synced_at: new Date().toISOString(),
     };
 }
