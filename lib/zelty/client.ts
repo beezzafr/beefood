@@ -79,9 +79,20 @@ export class ZeltyClient {
     catalogId: string,
     lang: string = 'fr'
   ): Promise<ZeltyCatalogResponse> {
-    return this.fetch<ZeltyCatalogResponse>(
+    console.log(`[Zelty Client] Fetching catalog dishes for ${catalogId}`);
+    const response = await this.fetch<any>(
       `/catalog/dishes?id_catalog=${catalogId}&lang=${lang}`
     );
+    console.log(`[Zelty Client] Response structure:`, Object.keys(response || {}));
+    console.log(`[Zelty Client] Has dishes?`, !!response?.dishes);
+    console.log(`[Zelty Client] Has data.dishes?`, !!response?.data?.dishes);
+    
+    // Adapter la structure si nécessaire
+    if (response?.data?.dishes) {
+      return { dishes: response.data.dishes };
+    }
+    
+    return response as ZeltyCatalogResponse;
   }
 
   /**
