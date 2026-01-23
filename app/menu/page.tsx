@@ -12,6 +12,8 @@ export default async function MenuPage() {
     redirect('/tenant-not-found');
   }
 
+  console.log('[Menu] Current tenant:', tenant.slug, tenant.id);
+
   // Récupérer les produits depuis Supabase (cache)
   const supabase = await createClient();
   const { data: products, error } = await supabase
@@ -20,6 +22,9 @@ export default async function MenuPage() {
     .eq('tenant_id', tenant.id)
     .eq('is_active', true)
     .order('sort_order', { ascending: true });
+
+  console.log('[Menu] Products fetched:', products?.length, 'Error:', error);
+  console.log('[Menu] Sample product tenant_ids:', products?.slice(0, 3).map(p => p.tenant_id));
 
   if (error) {
     console.error('[Menu] Error fetching products:', error);

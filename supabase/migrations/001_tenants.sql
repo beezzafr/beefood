@@ -108,7 +108,7 @@ INSERT INTO tenants (
   'www.tacobee.fr',
   'restaurant',
   3355,
-  'f3b5891e-6e10-40c9-864d-8bce4440e454'::uuid,
+  '067d7af3-a892-42bf-bb5a-8450c8ff9ec5'::uuid,  -- Catalogue plateforme
   'TACOBEE',
   '{"logo_url": "/logos/tacobee.svg", "primary_color": "#FFA500", "secondary_color": "#FFD700", "font_family": "Inter"}'::jsonb,
   true

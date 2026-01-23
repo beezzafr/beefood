@@ -88,6 +88,11 @@ CREATE POLICY "Produits lisibles par tous"
   ON catalog_products FOR SELECT 
   USING (is_active = true);
 
+-- Insertion/Update/Delete : Service role uniquement (pour la synchro Zelty)
+CREATE POLICY "Service role peut gérer les produits" 
+  ON catalog_products FOR ALL
+  USING (auth.jwt()->>'role' = 'service_role');
+
 -- ============================================
 -- RLS: catalog_options
 -- ============================================
@@ -97,6 +102,11 @@ ALTER TABLE catalog_options ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Options lisibles par tous" 
   ON catalog_options FOR SELECT 
   USING (is_available = true);
+
+-- Insertion/Update/Delete : Service role uniquement
+CREATE POLICY "Service role peut gérer les options" 
+  ON catalog_options FOR ALL
+  USING (auth.jwt()->>'role' = 'service_role');
 
 -- ============================================
 -- RLS: catalog_categories
