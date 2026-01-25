@@ -9,15 +9,16 @@ export async function middleware(request: NextRequest) {
   
   // En développement local, utiliser le tenant par défaut
   const isDev = process.env.NODE_ENV === 'development';
-  const isLocalhost = domain === 'localhost' || domain === '127.0.0.1' || domain.endsWith('.local');
+  const isLocalhost = domain === 'localhost' || domain === '127.0.0.1';
+  const isLocalDomain = domain.endsWith('.local');
   
   let tenantSlug: string | null = null;
   
   if (isDev && isLocalhost) {
-    // Utiliser le tenant par défaut configuré dans .env
+    // Sur localhost pur, utiliser le tenant par défaut configuré dans .env
     tenantSlug = process.env.DEV_TENANT_SLUG || 'tacobee';
-  } else {
-    // Résoudre le tenant depuis le domaine
+  } else if (isLocalDomain || !isDev) {
+    // Sur les domaines .local (dev) ou production (.fr), résoudre via mapping
     // Note: En production, on fera une vraie requête à Supabase
     // Pour l'instant, mapping simple
     const domainToSlug: Record<string, string> = {
