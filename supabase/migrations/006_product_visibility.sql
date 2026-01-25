@@ -5,6 +5,13 @@
 --          à une architecture globale avec visibilité par tenant
 -- ============================================
 
+-- Étape 0: Nettoyer les données existantes (IMPORTANT)
+-- ============================================
+-- Les anciens produits ont des doublons (même zelty_id pour plusieurs tenant_id)
+-- On doit les supprimer avant d'ajouter la contrainte UNIQUE sur zelty_id
+
+DELETE FROM catalog_products;
+
 -- Étape 1: Supprimer les contraintes et colonnes liées au tenant_id dans catalog_products
 -- ============================================
 
