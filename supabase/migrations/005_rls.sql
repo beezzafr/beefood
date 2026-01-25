@@ -79,16 +79,16 @@ CREATE POLICY "Clients suppriment leurs adresses"
   );
 
 -- ============================================
--- RLS: catalog_products
+-- RLS: catalog_products (MODIFIÉ pour architecture globale)
 -- ============================================
 ALTER TABLE catalog_products ENABLE ROW LEVEL SECURITY;
 
--- Lecture publique (filtrage par tenant_id géré par l'application)
+-- Lecture publique des produits actifs (le filtrage par tenant se fait via product_visibility)
 CREATE POLICY "Produits lisibles par tous" 
   ON catalog_products FOR SELECT 
   USING (is_active = true);
 
--- Insertion/Update/Delete : Service role uniquement (pour la synchro Zelty)
+-- Service role : Full access (pour la synchro Zelty)
 CREATE POLICY "Service role peut gérer les produits" 
   ON catalog_products FOR ALL
   USING (auth.jwt()->>'role' = 'service_role');
@@ -106,6 +106,21 @@ CREATE POLICY "Options lisibles par tous"
 -- Insertion/Update/Delete : Service role uniquement
 CREATE POLICY "Service role peut gérer les options" 
   ON catalog_options FOR ALL
+  USING (auth.jwt()->>'role' = 'service_role');
+
+-- ============================================
+-- RLS: product_visibility (NOUVEAU)
+-- ============================================
+ALTER TABLE product_visibility ENABLE ROW LEVEL SECURITY;
+
+-- Lecture publique (nécessaire pour les JOINs côté frontend)
+CREATE POLICY "Visibilité lisible par tous" 
+  ON product_visibility FOR SELECT 
+  USING (true);
+
+-- Service role : Full access (pour la synchro et l'interface admin)
+CREATE POLICY "Service role full access visibility" 
+  ON product_visibility FOR ALL
   USING (auth.jwt()->>'role' = 'service_role');
 
 -- ============================================

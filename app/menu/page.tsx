@@ -14,21 +14,24 @@ export default async function MenuPage() {
 
   console.log('[Menu] Current tenant:', tenant.slug, tenant.id);
 
-  // Récupérer les produits depuis Supabase (cache)
+  // Récupérer les produits visibles pour ce tenant (JOIN avec product_visibility)
   const supabase = await createClient();
   const { data: products, error } = await supabase
     .from('catalog_products')
-    .select('*')
-    .eq('tenant_id', tenant.id)
+    .select(`
+      *,
+      product_visibility!inner(tenant_id, is_visible)
+    `)
+    .eq('product_visibility.tenant_id', tenant.id)
+    .eq('product_visibility.is_visible', true)
     .eq('is_active', true)
     .order('sort_order', { ascending: true });
-
-  console.log('[Menu] Products fetched:', products?.length, 'Error:', error);
-  console.log('[Menu] Sample product tenant_ids:', products?.slice(0, 3).map(p => p.tenant_id));
 
   if (error) {
     console.error('[Menu] Error fetching products:', error);
   }
+
+  console.log('[Menu] Visible products for', tenant.slug, ':', products?.length || 0);
 
   const catalogProducts = (products as CatalogProduct[]) || [];
 

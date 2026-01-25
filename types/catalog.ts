@@ -4,7 +4,7 @@ export type ProductType = 'dish' | 'menu';
 
 export interface CatalogProduct {
   id: string;
-  tenant_id: string;
+  // tenant_id: retiré - produits globaux maintenant
   zelty_id: string;
   zelty_type: ProductType;
   name: string;

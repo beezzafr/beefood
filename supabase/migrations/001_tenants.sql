@@ -21,7 +21,7 @@ CREATE TABLE tenants (
   
   -- Zelty config
   zelty_restaurant_id INTEGER NOT NULL DEFAULT 3355,
-  zelty_catalog_id UUID,  -- NULL pour landing pages
+  zelty_catalog_id UUID,  -- NULL pour landing pages, inutilisé pour restaurants (catalogue global)
   zelty_virtual_brand_name TEXT,  -- NULL pour landing pages
   
   -- Branding
