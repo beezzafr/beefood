@@ -19,7 +19,7 @@ export default function TenantForm({
   onCancel,
 }: TenantFormProps) {
   const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, any>>({});
   
   // Form state
   const [slug, setSlug] = useState(initialData?.slug || '');
@@ -238,8 +238,8 @@ export default function TenantForm({
                 required
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
-              {errors.branding?.logo_url && (
-                <p className="text-sm text-red-600 mt-1">{errors.branding.logo_url}</p>
+              {errors.branding?.logo_url?._errors?.[0] && (
+                <p className="text-sm text-red-600 mt-1">{errors.branding.logo_url._errors[0]}</p>
               )}
             </div>
 
@@ -248,7 +248,7 @@ export default function TenantForm({
               label="Couleur principale *"
               value={primaryColor}
               onChange={setPrimaryColor}
-              error={errors.branding?.primary_color}
+              error={errors.branding?.primary_color?._errors?.[0]}
             />
 
             {/* Secondary Color */}
@@ -256,7 +256,7 @@ export default function TenantForm({
               label="Couleur secondaire *"
               value={secondaryColor}
               onChange={setSecondaryColor}
-              error={errors.branding?.secondary_color}
+              error={errors.branding?.secondary_color?._errors?.[0]}
             />
 
             {/* Font Family */}

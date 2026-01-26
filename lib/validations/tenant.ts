@@ -34,9 +34,7 @@ export const tenantSchema = z.object({
       /^(https?:\/\/)?(www\.)?[a-zA-Z0-9-]+\.[a-zA-Z]{2,}$/,
       'Format de domaine invalide (ex: www.tacobee.fr)'
     ),
-  tenant_type: z.enum(['landing', 'restaurant'], {
-    errorMap: () => ({ message: 'Type invalide' }),
-  }),
+  tenant_type: z.enum(['landing', 'restaurant']),
   zelty_restaurant_id: z
     .number()
     .int('Doit être un nombre entier')
@@ -49,7 +47,7 @@ export const tenantSchema = z.object({
     .optional(),
   zelty_virtual_brand_name: z.string().nullable().optional(),
   branding: tenantBrandingSchema,
-  settings: z.record(z.any()).default({}),
+  settings: z.record(z.string(), z.any()).default({}),
   is_active: z.boolean().default(true),
 });
 
