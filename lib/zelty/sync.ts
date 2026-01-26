@@ -71,8 +71,9 @@ export async function syncGlobalCatalog(
 
         console.log(`[Sync] ✅ Synced ${products.length} products globally`);
 
-        // 4. Créer la visibilité pour TOUS les tenants (nouveaux produits uniquement)
-        await syncProductVisibility();
+        // NOTE: La visibilité des produits est gérée manuellement depuis /admin/products
+        // On ne crée PLUS automatiquement les entrées product_visibility
+        // L'admin doit configurer la visibilité pour chaque restaurant manuellement
 
         return {
             success: true,
@@ -94,6 +95,7 @@ export async function syncGlobalCatalog(
 /**
  * Synchronise la visibilité des produits pour tous les tenants
  * Crée les entrées manquantes dans product_visibility
+ * @deprecated Non utilisé - La visibilité est gérée manuellement depuis /admin/products
  */
 async function syncProductVisibility(): Promise<void> {
     console.log('[Sync] Syncing product visibility...');

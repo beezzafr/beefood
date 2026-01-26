@@ -107,3 +107,29 @@ export async function getRestaurantTenants(): Promise<Tenant[]> {
     return [];
   }
 }
+
+/**
+ * Récupère un tenant par son ID
+ * Utilisé pour l'admin et les modifications
+ */
+export async function getTenantById(id: string): Promise<Tenant | null> {
+  try {
+    const supabase = await createClient();
+    
+    const { data, error } = await supabase
+      .from('tenants')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (error) {
+      console.error('[Tenant Resolver] Error fetching tenant by ID:', id, error);
+      return null;
+    }
+    
+    return data as Tenant;
+  } catch (error) {
+    console.error('[Tenant Resolver] Exception fetching tenant by ID:', error);
+    return null;
+  }
+}
