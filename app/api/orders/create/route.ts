@@ -2,9 +2,39 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createPaymentIntent } from '@/lib/payments/stripe';
 import { zeltyClient } from '@/lib/zelty/client';
-import { CreateOrderPayload } from '@/types/order';
 import { ZeltyOrderPayload } from '@/types/zelty';
 import { headers } from 'next/headers';
+
+interface OrderItem {
+  productId: string;
+  productName: string;
+  quantity: number;
+  price: number; // en centimes
+  options?: {
+    id: string;
+    name: string;
+    price: number;
+  }[];
+}
+
+interface CreateOrderRequest {
+  customer: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+  };
+  orderType: 'delivery' | 'takeaway' | 'dine-in';
+  deliveryAddress?: {
+    address: string;
+    city: string;
+    postalCode: string;
+  } | null;
+  instructions?: string;
+  paymentMethod: 'card' | 'cash';
+  items: OrderItem[];
+  totalCents: number;
+}
 
 /**
  * API Route pour créer une commande
@@ -20,7 +50,7 @@ import { headers } from 'next/headers';
  */
 export async function POST(request: Request) {
   try {
-    const body: CreateOrderPayload = await request.json();
+    const body: CreateOrderRequest = await request.json();
     const headersList = await headers();
     const tenantSlug = headersList.get('x-tenant-slug');
 
@@ -59,25 +89,22 @@ export async function POST(request: Request) {
     // 2. Calculer le subtotal
     let subtotalCents = 0;
     for (const item of body.items) {
-      const itemTotal = item.price_cents * item.quantity;
-      const optionsTotal = item.options.reduce(
-        (sum, opt) => sum + opt.price_cents * item.quantity,
-        0
-      );
-      subtotalCents += itemTotal + optionsTotal;
+      const itemPrice = item.price;
+      const optionsPrice = item.options?.reduce((sum, opt) => sum + opt.price, 0) || 0;
+      subtotalCents += (itemPrice + optionsPrice) * item.quantity;
     }
 
     // 3. Résoudre la zone de livraison (si delivery)
     let deliveryFeeCents = 0;
     let deliveryZoneId: string | null = null;
 
-    if (body.order_type === 'delivery' && body.delivery_address) {
+    if (body.orderType === 'delivery' && body.deliveryAddress) {
       const { data: zone, error: zoneError } = await supabase
         .from('delivery_zones')
         .select('*')
         .eq('tenant_id', tenantId)
         .eq('is_active', true)
-        .contains('zipcodes', [body.delivery_address.zipcode])
+        .contains('zipcodes', [body.deliveryAddress.postalCode])
         .single();
 
       if (zoneError || !zone) {
@@ -110,17 +137,26 @@ export async function POST(request: Request) {
     // 4. Calculer le total
     const totalCents = subtotalCents + deliveryFeeCents;
 
-    // 5. Créer l'ordre dans Supabase
-    const { data: order, error: orderError } = await supabase
+    // 5. Créer ou récupérer le customer
+    // TODO: Gérer l'authentification - pour l'instant, commande invité
+    const customerName = `${body.customer.firstName} ${body.customer.lastName}`;
+
+    // 6. Créer l'ordre dans Supabase
+    const { data: order, error: orderError} = await supabase
       .from('orders')
       .insert({
         tenant_id: tenantId,
-        customer_id: null, // TODO: À implémenter avec auth
-        customer_name: body.customer_name,
-        customer_email: body.customer_email,
-        customer_phone: body.customer_phone,
-        order_type: body.order_type,
-        delivery_address: body.delivery_address || null,
+        customer_id: null, // Commande invité pour l'instant
+        customer_name: customerName,
+        customer_email: body.customer.email,
+        customer_phone: body.customer.phone,
+        order_type: body.orderType,
+        delivery_address: body.deliveryAddress ? {
+          street: body.deliveryAddress.address,
+          city: body.deliveryAddress.city,
+          zipcode: body.deliveryAddress.postalCode,
+          additional_info: body.instructions || undefined,
+        } : null,
         delivery_zone_id: deliveryZoneId,
         items: body.items,
         subtotal_cents: subtotalCents,
@@ -128,9 +164,9 @@ export async function POST(request: Request) {
         discount_cents: 0,
         total_cents: totalCents,
         status: 'pending',
-        payment_status: 'pending',
-        payment_method: body.payment_method,
-        customer_notes: body.customer_notes || null,
+        payment_status: body.paymentMethod === 'card' ? 'pending' : 'cash',
+        payment_method: body.paymentMethod === 'card' ? 'stripe' : 'cash',
+        customer_notes: body.instructions || null,
       })
       .select()
       .single();
@@ -143,53 +179,55 @@ export async function POST(request: Request) {
       );
     }
 
-    // 6. Créer le Payment Intent Stripe (si paiement en ligne)
+    // 7. Créer le Payment Intent Stripe (si paiement par carte)
     let paymentIntentClientSecret: string | null = null;
 
-    if (body.payment_method === 'stripe') {
-      const paymentIntent = await createPaymentIntent(totalCents, 'eur', {
-        order_id: order.id,
-        order_number: order.order_number,
-        tenant_id: tenantId,
-      });
+    if (body.paymentMethod === 'card') {
+      try {
+        const paymentIntent = await createPaymentIntent(totalCents, 'eur', {
+          order_id: order.id,
+          order_number: order.order_number,
+          tenant_id: tenantId,
+        });
 
-      paymentIntentClientSecret = paymentIntent.client_secret;
+        paymentIntentClientSecret = paymentIntent.client_secret;
 
-      // Enregistrer le paiement
-      await supabase.from('payments').insert({
-        order_id: order.id,
-        provider: 'stripe',
-        provider_payment_id: paymentIntent.id,
-        amount_cents: totalCents,
-        status: 'pending',
-      });
+        // Enregistrer le paiement
+        await supabase.from('payments').insert({
+          order_id: order.id,
+          provider: 'stripe',
+          provider_payment_id: paymentIntent.id,
+          amount_cents: totalCents,
+          status: 'pending',
+        });
+      } catch (stripeError) {
+        console.error('[Orders] Stripe error:', stripeError);
+        // Continuer sans bloquer la commande
+      }
     }
 
-    // 7. Envoyer la commande à Zelty
+    // 8. Envoyer la commande à Zelty
     if (tenant.zelty_virtual_brand_name) {
       try {
         // Mapper order_type -> mode Zelty
-        const zeltyMode = body.order_type === 'pickup' ? 'takeaway' : 'delivery';
+        const zeltyMode = body.orderType === 'takeaway' ? 'takeaway' : 'delivery';
 
-        // Préparer les items pour Zelty
-        // IMPORTANT: Zelty peut nécessiter de dupliquer les items au lieu d'utiliser quantity
-        // À valider avec vos tests. Pour l'instant, on envoie avec quantity.
-        const zeltyItems = body.items.map((item) => ({
-          id: parseInt(item.zelty_id),  // INTEGER, pas string
-          price: item.price_cents,
-          modifiers: item.options.map((opt) => ({  // "modifiers", pas "options"
-            id_option_value: parseInt(opt.zelty_id),
-            price: opt.price_cents,
-          })),
-          // Note: quantity pourrait nécessiter duplication selon API
-          // Ex: Array.from({ length: item.quantity }, () => ({ id: ..., modifiers: ... }))
-        }));
+        // Préparer les items pour Zelty (format v2.10)
+        const zeltyItems = body.items.flatMap((item) => {
+          // Récupérer le zelty_id depuis la base
+          return Array.from({ length: item.quantity }, () => ({
+            id: parseInt(item.productId), // Assume productId is zelty_id
+            modifiers: item.options?.map((opt) => ({
+              id_option_value: parseInt(opt.id),
+              price: opt.price,
+            })) || [],
+          }));
+        });
 
         // Ajouter les frais de livraison comme produit si applicable
         if (deliveryFeeCents > 0 && process.env.ZELTY_DELIVERY_FEE_PRODUCT_ID) {
           zeltyItems.push({
             id: parseInt(process.env.ZELTY_DELIVERY_FEE_PRODUCT_ID),
-            price: deliveryFeeCents,
             modifiers: [],
           });
         }
@@ -197,27 +235,27 @@ export async function POST(request: Request) {
         const zeltyPayload: ZeltyOrderPayload = {
           id_restaurant: tenant.zelty_restaurant_id,
           source: 'web',
-          mode: zeltyMode,  // "mode", pas "order_type"
+          mode: zeltyMode,
           customer: {
-            name: body.customer_name,
-            email: body.customer_email,
-            phone: body.customer_phone,
+            name: customerName,
+            email: body.customer.email,
+            phone: body.customer.phone,
           },
-          address: body.delivery_address ? {
-            street: body.delivery_address.street,
-            city: body.delivery_address.city,
-            zipcode: body.delivery_address.zipcode,
-            additional_info: body.delivery_address.additional_info,
+          address: body.deliveryAddress ? {
+            street: body.deliveryAddress.address,
+            city: body.deliveryAddress.city,
+            zipcode: body.deliveryAddress.postalCode,
+            additional_info: body.instructions || undefined,
           } : null,
           items: zeltyItems,
           total: totalCents,
-          transactions: body.payment_method === 'stripe' ? [{
+          transactions: body.paymentMethod === 'card' ? [{
             type: 'card',
             amount: totalCents,
           }] : undefined,
-          comment: body.customer_notes || null,
-          first_name: body.customer_name,
-          phone: body.customer_phone,
+          comment: body.instructions || null,
+          first_name: body.customer.firstName,
+          phone: body.customer.phone,
         };
 
         const zeltyOrder = await zeltyClient.createOrder(zeltyPayload);
@@ -234,22 +272,21 @@ export async function POST(request: Request) {
       } catch (zeltyError) {
         console.error('[Orders] Error sending to Zelty:', zeltyError);
         // Ne pas bloquer la commande si Zelty échoue
-        // TODO: Implémenter un système de retry
       }
     }
 
-    // 8. Retourner la réponse
+    // 9. Retourner la réponse
     return NextResponse.json({
       success: true,
       order: {
         id: order.id,
         order_number: order.order_number,
-        public_token: order.public_token,
+        tracking_token: order.tracking_token,
         total_cents: totalCents,
         status: order.status,
       },
       payment: {
-        method: body.payment_method,
+        method: body.paymentMethod,
         client_secret: paymentIntentClientSecret,
       },
     });
