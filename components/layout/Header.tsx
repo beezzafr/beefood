@@ -1,11 +1,13 @@
 'use client';
 
 import { useTenant } from '@/lib/tenants/context';
+import { useCart } from '@/lib/cart/CartContext';
 import Link from 'next/link';
 import { ShoppingCart, User } from 'lucide-react';
 
 export default function Header() {
   const tenant = useTenant();
+  const { itemCount } = useCart();
 
   return (
     <header className="bg-white shadow-sm sticky top-0 z-50">
@@ -44,7 +46,14 @@ export default function Header() {
               className="relative p-2 text-gray-700 hover:text-gray-900"
             >
               <ShoppingCart className="w-6 h-6" />
-              {/* Badge pour le nombre d'items - à implémenter avec context panier */}
+              {itemCount > 0 && (
+                <span 
+                  className="absolute -top-1 -right-1 w-5 h-5 rounded-full text-white text-xs font-bold flex items-center justify-center"
+                  style={{ backgroundColor: tenant.branding.primary_color }}
+                >
+                  {itemCount}
+                </span>
+              )}
             </Link>
             <Link
               href="/account"

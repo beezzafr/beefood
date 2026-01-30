@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { getCurrentTenant } from '@/lib/tenants/server';
 import { TenantProvider } from '@/lib/tenants/context';
+import { CartProvider } from '@/lib/cart/CartContext';
 import { redirect } from 'next/navigation';
 
 const inter = Inter({ subsets: ['latin'] });
@@ -41,7 +42,9 @@ export default async function RootLayout({
       </head>
       <body className={inter.className}>
         <TenantProvider tenant={tenant}>
-          {children}
+          <CartProvider>
+            {children}
+          </CartProvider>
         </TenantProvider>
       </body>
     </html>

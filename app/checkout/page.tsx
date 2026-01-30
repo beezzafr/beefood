@@ -1,9 +1,9 @@
 import { getCurrentTenant } from '@/lib/tenants/server';
 import { redirect } from 'next/navigation';
 import Header from '@/components/layout/Header';
-import CartContent from '@/components/cart/CartContent';
+import CheckoutContent from '@/components/checkout/CheckoutContent';
 
-export default async function CartPage() {
+export default async function CheckoutPage() {
   const tenant = await getCurrentTenant();
 
   if (!tenant) {
@@ -13,7 +13,7 @@ export default async function CartPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Header />
-      <CartContent />
+      <CheckoutContent />
     </div>
   );
 }
