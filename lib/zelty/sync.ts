@@ -50,14 +50,23 @@ export async function syncGlobalCatalog(
         }
 
         console.log(`[Sync] Received catalog data with keys:`, Object.keys(catalogData));
+        console.log(`[Sync] catalogData structure:`, JSON.stringify(catalogData, null, 2).substring(0, 500));
 
-        // Extraire les dishes et options
-        const dishes = catalogData.dishes || [];
-        const options = catalogData.options || [];
+        // Extraire les dishes et options (gérer plusieurs structures possibles)
+        let dishes = catalogData.dishes || catalogData.data?.dishes || [];
+        let options = catalogData.options || catalogData.data?.options || [];
+
+        // Si la réponse contient un tableau "catalogs" avec les données dedans
+        if (Array.isArray(catalogData.catalogs) && catalogData.catalogs.length > 0) {
+            const catalog = catalogData.catalogs[0];
+            dishes = catalog.dishes || [];
+            options = catalog.options || [];
+        }
 
         console.log(`[Sync] Found ${dishes.length} products and ${options.length} option groups`);
 
         if (dishes.length === 0) {
+            console.error('[Sync] Full catalogData:', JSON.stringify(catalogData, null, 2));
             throw new Error('No dishes data received from Zelty');
         }
 
