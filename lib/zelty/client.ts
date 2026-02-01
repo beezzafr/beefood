@@ -57,17 +57,20 @@ export class ZeltyClient {
   }
 
   /**
-   * Récupère le catalogue complet d'un restaurant
+   * Récupère le catalogue complet d'un restaurant (avec options)
    * @param catalogId UUID du catalogue Zelty
    * @param lang Langue (fr, en, etc.)
    */
   async getCatalog(
     catalogId: string,
     lang: string = 'fr'
-  ): Promise<ZeltyCatalogResponse> {
-    return this.fetch<ZeltyCatalogResponse>(
+  ): Promise<any> {
+    console.log(`[Zelty Client] Fetching full catalog for ${catalogId}`);
+    const response = await this.fetch<any>(
       `/catalogs/${catalogId}?lang=${lang}`
     );
+    console.log(`[Zelty Client] Full catalog response keys:`, Object.keys(response || {}));
+    return response;
   }
 
   /**

@@ -26,7 +26,7 @@ function transformZeltyDish(dish: ZeltyCatalogDish) {
 
 /**
  * Synchronise le catalogue global depuis Zelty (NOUVEAU)
- * Tous les produits sont importés sans tenant_id
+ * Import les produits ET leurs options
  */
 export async function syncGlobalCatalog(
     client?: ZeltyClient
@@ -42,34 +42,120 @@ export async function syncGlobalCatalog(
     console.log(`[Sync] Starting global catalog sync from ${catalogId}...`);
 
     try {
-        // 1. Récupérer le catalogue depuis Zelty
-        const catalogData = await zelty.getCatalogDishes(catalogId, 'fr');
+        // 1. Récupérer le catalogue COMPLET depuis Zelty (avec options)
+        const catalogData = await zelty.getCatalog(catalogId, 'fr');
 
-        if (!catalogData || !catalogData.dishes) {
+        if (!catalogData) {
+            throw new Error('No catalog data received from Zelty');
+        }
+
+        console.log(`[Sync] Received catalog data with keys:`, Object.keys(catalogData));
+
+        // Extraire les dishes et options
+        const dishes = catalogData.dishes || [];
+        const options = catalogData.options || [];
+
+        console.log(`[Sync] Found ${dishes.length} products and ${options.length} option groups`);
+
+        if (dishes.length === 0) {
             throw new Error('No dishes data received from Zelty');
         }
 
-        console.log(`[Sync] Received ${catalogData.dishes.length} products from Zelty`);
-
-        // 2. Transformer les données (sans tenant_id)
-        const products = catalogData.dishes.map((dish: ZeltyCatalogDish) =>
+        // 2. Transformer les produits (sans tenant_id)
+        const products = dishes.map((dish: ZeltyCatalogDish) =>
             transformZeltyDish(dish)
         );
 
-        // 3. Upsert dans Supabase
         const supabase = await createClient();
-        const { error } = await supabase
+
+        // 3. Upsert les produits dans Supabase
+        const { data: insertedProducts, error: productsError } = await supabase
             .from('catalog_products')
             .upsert(products, {
                 onConflict: 'zelty_id',
                 ignoreDuplicates: false,
-            });
+            })
+            .select('id, zelty_id');
 
-        if (error) {
-            throw error;
+        if (productsError) {
+            throw productsError;
         }
 
         console.log(`[Sync] ✅ Synced ${products.length} products globally`);
+
+        // 4. Créer un mapping zelty_id -> product_id pour les options
+        const productIdMap = new Map(
+            insertedProducts?.map(p => [p.zelty_id, p.id]) || []
+        );
+
+        // 5. Traiter les options
+        let totalOptionsInserted = 0;
+
+        if (options && options.length > 0) {
+            for (const optionGroup of options) {
+                // Structure Zelty : { id, name, type, values: [...] }
+                const groupName = optionGroup.name || 'Options';
+                const groupType = optionGroup.type || 'simple';
+
+                if (!optionGroup.values || optionGroup.values.length === 0) {
+                    continue;
+                }
+
+                // Transformer chaque valeur d'option
+                const optionValues = optionGroup.values.map((value: any) => {
+                    // Trouver les produits qui utilisent cette option
+                    // (on va les lier après insertion)
+                    return {
+                        zelty_id: value.id.toString(),
+                        product_id: null, // Sera lié après
+                        name: value.name,
+                        description: value.description || null,
+                        price_cents: value.price || 0,
+                        is_available: !value.outofstock,
+                        option_group_name: groupName,
+                        option_type: groupType,
+                        sort_order: value.o || 0,
+                    };
+                });
+
+                // Upsert les options
+                const { error: optionsError } = await supabase
+                    .from('catalog_options')
+                    .upsert(optionValues, {
+                        onConflict: 'zelty_id',
+                        ignoreDuplicates: false,
+                    });
+
+                if (optionsError) {
+                    console.error(`[Sync] Error inserting options for group ${groupName}:`, optionsError);
+                } else {
+                    totalOptionsInserted += optionValues.length;
+                }
+            }
+
+            console.log(`[Sync] ✅ Synced ${totalOptionsInserted} options globally`);
+        }
+
+        // 6. Lier les options aux produits (via product_id)
+        // Pour chaque produit, mettre à jour les options liées
+        for (const dish of dishes) {
+            if (!dish.options || dish.options.length === 0) continue;
+
+            const productId = productIdMap.get(dish.id.toString());
+            if (!productId) continue;
+
+            // Mettre à jour les options pour ce produit
+            const { error: linkError } = await supabase
+                .from('catalog_options')
+                .update({ product_id: productId })
+                .in('zelty_id', dish.options.map((o: number) => o.toString()));
+
+            if (linkError) {
+                console.error(`[Sync] Error linking options for product ${dish.name}:`, linkError);
+            }
+        }
+
+        console.log(`[Sync] ✅ Linked options to products`);
 
         // NOTE: La visibilité des produits est gérée manuellement depuis /admin/products
         // On ne crée PLUS automatiquement les entrées product_visibility
