@@ -9,15 +9,18 @@
 -- ============================================
 DELETE FROM catalog_options;
 
--- Étape 2: Supprimer les contraintes liées au tenant_id
+-- Étape 2: Supprimer les contraintes et index existants
 -- ============================================
 
 -- Supprimer la contrainte unique sur (tenant_id, zelty_id)
 ALTER TABLE catalog_options DROP CONSTRAINT IF EXISTS catalog_options_tenant_id_zelty_id_key;
 
--- Supprimer les index liés au tenant_id
+-- Supprimer TOUS les index existants pour les recréer proprement
 DROP INDEX IF EXISTS idx_catalog_options_tenant;
+DROP INDEX IF EXISTS idx_catalog_options_product;
+DROP INDEX IF EXISTS idx_catalog_options_zelty_id;
 DROP INDEX IF EXISTS idx_catalog_options_available;
+DROP INDEX IF EXISTS idx_catalog_options_group;
 
 -- Supprimer la foreign key vers tenants et la colonne tenant_id
 ALTER TABLE catalog_options DROP CONSTRAINT IF EXISTS catalog_options_tenant_id_fkey;
@@ -45,10 +48,10 @@ ALTER TABLE catalog_options ADD COLUMN IF NOT EXISTS option_type TEXT DEFAULT 's
 
 -- Étape 5: Recréer les index adaptés
 -- ============================================
-CREATE INDEX idx_catalog_options_product ON catalog_options(product_id);
-CREATE INDEX idx_catalog_options_zelty_id ON catalog_options(zelty_id);
-CREATE INDEX idx_catalog_options_available ON catalog_options(is_available) WHERE is_available = true;
-CREATE INDEX idx_catalog_options_group ON catalog_options(product_id, option_group_name);
+CREATE INDEX IF NOT EXISTS idx_catalog_options_product ON catalog_options(product_id);
+CREATE INDEX IF NOT EXISTS idx_catalog_options_zelty_id ON catalog_options(zelty_id);
+CREATE INDEX IF NOT EXISTS idx_catalog_options_available ON catalog_options(is_available) WHERE is_available = true;
+CREATE INDEX IF NOT EXISTS idx_catalog_options_group ON catalog_options(product_id, option_group_name);
 
 -- Étape 6: Commentaires pour documentation
 -- ============================================
