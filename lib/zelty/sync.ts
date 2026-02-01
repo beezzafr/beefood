@@ -14,14 +14,32 @@ function transformZeltyItem(item: any) {
                     item.internal_id?.toString() || 
                     item.id?.toString();
     
+    // Le prix peut être un objet { price: 1100, is_fixed: true, ... } ou un nombre simple
+    let priceCents = 0;
+    if (typeof item.price === 'object' && item.price !== null) {
+        priceCents = item.price.price || 0;
+    } else {
+        priceCents = item.price || 0;
+    }
+    
+    // La taxe peut aussi être un objet ou un nombre
+    let taxRate = 10.0; // Par défaut 10%
+    if (typeof item.tax === 'object' && item.tax !== null) {
+        taxRate = (item.tax.rate || 1000) / 100;
+    } else if (item.tax) {
+        taxRate = item.tax / 100;
+    } else if (item.tva) {
+        taxRate = item.tva / 100;
+    }
+    
     return {
         zelty_id: zeltyId,
         zelty_type: item.type === 'menu' ? 'menu' : 'dish',
         name: item.name,
         description: item.description || null,
         image_url: item.image || null,
-        price_cents: item.price || 0,
-        tax_rate: (item.tax || item.tva || 1000) / 100,  // Convertir 1000 -> 10.0
+        price_cents: priceCents,
+        tax_rate: taxRate,
         is_available: !item.disabled && !item.disable,
         is_active: !item.disabled && !item.disable,
         category_ids: item.tag_ids || item.tags?.map((t: any) => t.toString()) || [],
@@ -126,12 +144,20 @@ export async function syncGlobalCatalog(
                 // Récupérer le groupe parent
                 const groupInfo = optionGroupMap.get(value.option_id) || { name: 'Options', type: 'simple' };
 
+                // Le prix peut être un objet { price: 200, is_fixed: true, ... } ou un nombre simple
+                let priceCents = 0;
+                if (typeof value.price === 'object' && value.price !== null) {
+                    priceCents = value.price.price || 0;
+                } else {
+                    priceCents = value.price || 0;
+                }
+
                 return {
                     zelty_id: zeltyId,
                     product_id: null, // Sera lié après
                     name: value.name,
                     description: value.description || null,
-                    price_cents: value.price || 0,
+                    price_cents: priceCents,
                     is_available: !value.disabled && !value.outofstock,
                     option_group_name: groupInfo.name,
                     option_type: groupInfo.type,
