@@ -4,22 +4,29 @@ import { Tenant } from '@/types/tenant';
 import { ZeltyCatalogDish } from '@/types/zelty';
 
 /**
- * Transforme un produit Zelty en format Supabase (SANS tenant_id)
+ * Transforme un item Zelty en format Supabase (SANS tenant_id)
+ * Compatible avec l'API /catalogs/{id} (items) et /catalog/dishes (dishes)
  */
-function transformZeltyDish(dish: ZeltyCatalogDish) {
+function transformZeltyItem(item: any) {
+    // L'API /catalogs/{id} utilise des IDs avec préfixe "ZD" (ex: "ZD1794498")
+    // On extrait juste le numéro
+    const zeltyId = item.id?.toString().replace(/^ZD/, '') || 
+                    item.internal_id?.toString() || 
+                    item.id?.toString();
+    
     return {
-        zelty_id: dish.id.toString(),  // Convertir number en string
-        zelty_type: 'dish' as const,
-        name: dish.name,
-        description: dish.description || null,
-        image_url: dish.image || null,
-        price_cents: dish.price,  // Déjà en centimes dans Zelty
-        tax_rate: dish.tva / 100,  // Convertir 1000 -> 10.0
-        is_available: !dish.disable,  // disable = true → indisponible
-        is_active: !dish.disable,  // Utiliser disable pour l'instant
-        category_ids: dish.tags?.map(t => t.toString()) || [],
-        allergens: [],  // Pas dans l'API, à gérer autrement si nécessaire
-        sort_order: dish.o || 0,
+        zelty_id: zeltyId,
+        zelty_type: item.type === 'menu' ? 'menu' : 'dish',
+        name: item.name,
+        description: item.description || null,
+        image_url: item.image || null,
+        price_cents: item.price || 0,
+        tax_rate: (item.tax || item.tva || 1000) / 100,  // Convertir 1000 -> 10.0
+        is_available: !item.disabled && !item.disable,
+        is_active: !item.disabled && !item.disable,
+        category_ids: item.tag_ids || item.tags?.map((t: any) => t.toString()) || [],
+        allergens: [],
+        sort_order: item.sort_order || item.o || 0,
         synced_at: new Date().toISOString(),
     };
 }
@@ -56,18 +63,12 @@ export async function syncGlobalCatalog(
         
         console.log(`[Sync] Catalog object keys:`, Object.keys(catalog));
 
-        // Extraire les dishes et options
-        let dishes = catalog.dishes || catalogData.dishes || catalogData.data?.dishes || [];
+        // IMPORTANT: L'API /catalogs/{id} utilise "items" et non "dishes"
+        let dishes = catalog.items || catalog.dishes || catalogData.dishes || catalogData.data?.dishes || [];
         let options = catalog.options || catalogData.options || catalogData.data?.options || [];
+        let optionValues = catalog.optionValues || [];
 
-        // Si la réponse contient un tableau "catalogs" avec les données dedans
-        if (Array.isArray(catalog.catalogs) && catalog.catalogs.length > 0) {
-            const subCatalog = catalog.catalogs[0];
-            dishes = subCatalog.dishes || dishes;
-            options = subCatalog.options || options;
-        }
-
-        console.log(`[Sync] Found ${dishes.length} products and ${options.length} option groups`);
+        console.log(`[Sync] Found ${dishes.length} products, ${options.length} option groups, ${optionValues.length} option values`);
 
         if (dishes.length === 0) {
             console.error('[Sync] Full catalog structure:', JSON.stringify(catalog, null, 2).substring(0, 1000));
@@ -75,8 +76,8 @@ export async function syncGlobalCatalog(
         }
 
         // 2. Transformer les produits (sans tenant_id)
-        const products = dishes.map((dish: ZeltyCatalogDish) =>
-            transformZeltyDish(dish)
+        const products = dishes.map((item: any) =>
+            transformZeltyItem(item)
         );
 
         const supabase = await createClient();
@@ -101,70 +102,84 @@ export async function syncGlobalCatalog(
             insertedProducts?.map(p => [p.zelty_id, p.id]) || []
         );
 
-        // 5. Traiter les options
+        // 5. Traiter les options et leurs valeurs
+        // Structure de l'API /catalogs/{id}:
+        // - options: groupes d'options avec metadata
+        // - optionValues: valeurs individuelles des options
         let totalOptionsInserted = 0;
 
-        if (options && options.length > 0) {
-            for (const optionGroup of options) {
-                // Structure Zelty : { id, name, type, values: [...] }
-                const groupName = optionGroup.name || 'Options';
-                const groupType = optionGroup.type || 'simple';
+        if (optionValues && optionValues.length > 0) {
+            // Créer un map des groupes d'options pour récupérer les noms
+            const optionGroupMap = new Map<string, { name: string; type: string }>(
+                options.map((opt: any) => [
+                    opt.id || opt.internal_id,
+                    { name: opt.name || 'Options', type: opt.type || 'simple' }
+                ])
+            );
 
-                if (!optionGroup.values || optionGroup.values.length === 0) {
-                    continue;
-                }
+            // Transformer les optionValues
+            const transformedOptions = optionValues.map((value: any) => {
+                // Extraire l'ID sans préfixe "ZOV"
+                const zeltyId = value.id?.toString().replace(/^ZOV/, '') || 
+                               value.internal_id?.toString();
+                
+                // Récupérer le groupe parent
+                const groupInfo = optionGroupMap.get(value.option_id) || { name: 'Options', type: 'simple' };
 
-                // Transformer chaque valeur d'option
-                const optionValues = optionGroup.values.map((value: any) => {
-                    // Trouver les produits qui utilisent cette option
-                    // (on va les lier après insertion)
-                    return {
-                        zelty_id: value.id.toString(),
-                        product_id: null, // Sera lié après
-                        name: value.name,
-                        description: value.description || null,
-                        price_cents: value.price || 0,
-                        is_available: !value.outofstock,
-                        option_group_name: groupName,
-                        option_type: groupType,
-                        sort_order: value.o || 0,
-                    };
+                return {
+                    zelty_id: zeltyId,
+                    product_id: null, // Sera lié après
+                    name: value.name,
+                    description: value.description || null,
+                    price_cents: value.price || 0,
+                    is_available: !value.disabled && !value.outofstock,
+                    option_group_name: groupInfo.name,
+                    option_type: groupInfo.type,
+                    sort_order: value.sort_order || value.o || 0,
+                };
+            });
+
+            // Upsert les options
+            const { error: optionsError } = await supabase
+                .from('catalog_options')
+                .upsert(transformedOptions, {
+                    onConflict: 'zelty_id',
+                    ignoreDuplicates: false,
                 });
 
-                // Upsert les options
-                const { error: optionsError } = await supabase
-                    .from('catalog_options')
-                    .upsert(optionValues, {
-                        onConflict: 'zelty_id',
-                        ignoreDuplicates: false,
-                    });
-
-                if (optionsError) {
-                    console.error(`[Sync] Error inserting options for group ${groupName}:`, optionsError);
-                } else {
-                    totalOptionsInserted += optionValues.length;
-                }
+            if (optionsError) {
+                console.error(`[Sync] Error inserting options:`, optionsError);
+            } else {
+                totalOptionsInserted = transformedOptions.length;
+                console.log(`[Sync] ✅ Synced ${totalOptionsInserted} options globally`);
             }
-
-            console.log(`[Sync] ✅ Synced ${totalOptionsInserted} options globally`);
         }
 
         // 6. Lier les options aux produits (via product_id)
-        // Pour chaque produit, mettre à jour les options liées
-        for (const dish of dishes) {
-            if (!dish.options || dish.options.length === 0) continue;
+        // Les items ont un champ option_value_ids avec les IDs des options
+        for (const item of dishes) {
+            if (!item.option_value_ids || item.option_value_ids.length === 0) continue;
 
-            const productId = productIdMap.get(dish.id.toString());
+            // Extraire le zelty_id du produit (sans préfixe "ZD")
+            const itemZeltyId = item.id?.toString().replace(/^ZD/, '') || 
+                               item.internal_id?.toString();
+            
+            const productId = productIdMap.get(itemZeltyId);
             if (!productId) continue;
+
+            // Extraire les IDs des options (sans préfixe "ZOV")
+            const optionZeltyIds = item.option_value_ids.map((id: string) => 
+                id.toString().replace(/^ZOV/, '')
+            );
 
             // Mettre à jour les options pour ce produit
             const { error: linkError } = await supabase
                 .from('catalog_options')
                 .update({ product_id: productId })
-                .in('zelty_id', dish.options.map((o: number) => o.toString()));
+                .in('zelty_id', optionZeltyIds);
 
             if (linkError) {
-                console.error(`[Sync] Error linking options for product ${dish.name}:`, linkError);
+                console.error(`[Sync] Error linking options for product ${item.name}:`, linkError);
             }
         }
 
